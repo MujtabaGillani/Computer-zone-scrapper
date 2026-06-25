@@ -1,0 +1,15 @@
+# Secrets -- never commit your real session cookies
+.env
+cookies.txt
+
+# Scraper output
+*.csv
+
+# Saved HTML debug dumps
+*.html
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
