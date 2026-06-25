@@ -41,6 +41,7 @@ FIELDNAMES = [
     "original_price",
     "status",
     "image",
+    "image_count",
     "description",
     "sku",
     "category",
@@ -185,20 +186,48 @@ def meta_content(soup, prop):
     return el.get("content", "").strip() if el else ""
 
 
+def parse_title(soup):
+    """Full product title. The site truncates <title>/og:title to ~70 chars,
+    so prefer the breadcrumb's active item, which carries the complete name."""
+    crumb = soup.select_one("ol.breadcrumb li.breadcrumb-item.active")
+    if crumb:
+        title = clean(crumb.get_text())
+        if title:
+            return title
+    name = meta_content(soup, "og:title")
+    if name:
+        return name
+    title = soup.find("title")
+    return clean(title.get_text()).split(" - ")[0] if title else ""
+
+
+def parse_images(soup):
+    """Return all gallery image URLs (full-size), main image first, de-duplicated."""
+    urls = []
+    seen = set()
+    for img in soup.select("img.xzoom-gallery5"):
+        url = absolute_url(img.get("xpreview") or img.get("src"))
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
+    if not urls:  # fall back to the single main image, then og:image
+        main = soup.select_one(".product-details img")
+        if main:
+            url = absolute_url(main.get("xoriginal") or main.get("src"))
+            if url:
+                urls.append(url)
+    if not urls:
+        og = meta_content(soup, "og:image")
+        if og:
+            urls.append(og)
+    return urls
+
+
 def parse_product(html, url, category):
     soup = BeautifulSoup(html, "lxml")
 
-    name = meta_content(soup, "og:title")
-    if not name:
-        title = soup.find("title")
-        name = clean(title.get_text()).split(" - ")[0] if title else ""
-
-    image = meta_content(soup, "og:image")
-    if not image:
-        img = soup.select_one(".product-details img")
-        if img:
-            image = absolute_url(img.get("xoriginal") or img.get("src"))
-
+    name = parse_title(soup)
+    images = parse_images(soup)
     current_price, original_price = parse_price_block(soup)
     status = parse_status(soup)
     description = parse_description(soup)
@@ -211,7 +240,8 @@ def parse_product(html, url, category):
         "price": current_price,
         "original_price": original_price,
         "status": status,
-        "image": image,
+        "image": " | ".join(images),
+        "image_count": len(images),
         "description": description,
         "sku": sku,
         "category": category,
